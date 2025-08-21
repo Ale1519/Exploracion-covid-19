@@ -213,10 +213,21 @@ ax.set_title(f"Gráfico de control (3σ) – {country_daily}")
 ax.legend()
 st.pyplot(fig)
 
+# ———————————————————————————————————————————————
+# ———————————————————————————————————————————————
+# ———————————————————————————————————————————————
 
 st.header("2.3 Test de hipótesis de CFR entre dos países")
 
-paises = st.multiselect("Selecciona dos países", agg_country.index.tolist(), default=["Peru","Chile"])
+# Definir columnas si no están ya
+D = "Deaths"
+C = "Confirmed"
+
+# Agrupación por país
+agg_country = df.groupby("Country")[[D, C]].sum()
+
+# Selección de países
+paises = st.multiselect("Selecciona dos países", agg_country.index.tolist(), default=["Peru", "Chile"])
 
 if len(paises) == 2:
     deaths = [agg_country.loc[p, D] for p in paises]
@@ -231,7 +242,8 @@ if len(paises) == 2:
         if pval < 0.05:
             st.success("Se rechaza H0: Hay diferencia significativa en CFR.")
         else:
-            st.info("No se rechaza H0: No hay diferencia significativa en CFR.")
+            st.info("No se rechaza H0: No hay diferencia significativa en CFR.")
+
 
 # ———————————————————————————————————————————————
 # 2.4 Detección de outliers
