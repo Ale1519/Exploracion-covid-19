@@ -5,6 +5,8 @@ from io import StringIO
 from scipy import stats
 import matplotlib.pyplot as plt
 import seaborn as sns
+import statsmodels
+from statsmodels.stats.proportion import proportions_ztest
 
 st.set_page_config(page_title="COVID-19 Viz – Pregunta 2", layout="wide")
 
@@ -212,75 +214,58 @@ ax.legend()
 st.pyplot(fig)
 
 
+st.header("2.3 Test de hipótesis de CFR entre dos países")
+
+paises = st.multiselect("Selecciona dos países", agg_country.index.tolist(), default=["Peru","Chile"])
+
+if len(paises) == 2:
+    deaths = [agg_country.loc[p, D] for p in paises]
+    confirmed = [agg_country.loc[p, C] for p in paises]
+
+    # Evitar división por cero
+    if 0 in confirmed:
+        st.error("Uno de los países seleccionados tiene 0 confirmados. No se puede calcular el test.")
+    else:
+        stat, pval = proportions_ztest(count=deaths, nobs=confirmed)
+        st.write(f"Estadístico Z: {stat:.3f}, p-valor: {pval:.4f}")
+        if pval < 0.05:
+            st.success("Se rechaza H0: Hay diferencia significativa en CFR.")
+        else:
+            st.info("No se rechaza H0: No hay diferencia significativa en CFR.")
+
 # ———————————————————————————————————————————————
-# 2. Estadística descriptiva y avanzada
+# 2.4 Detección de outliers
 # ———————————————————————————————————————————————
-st.header("2) Estadística descriptiva y avanzada")
+st.header("2.4 Outliers en fallecidos (Z-score)")
 
-# 2.1. Métricas clave por país: Confirmados, Fallecidos, CFR y tasas por 100k
-df_grouped = df.groupby(country_col).agg({
-    C: "sum",
-    D: "sum"
-}).reset_index()
-df_grouped["CFR"] = df_grouped[D] / df_grouped[C]
-# Si la población no está disponible, asumimos 1M para tasa
-df_grouped["Confirmed_per_100k"] = df_grouped[C] / 1e6 * 100000
-df_grouped["Deaths_per_100k"] = df_grouped[D] / 1e6 * 100000
-st.subheader("Métricas por país")
-st.dataframe(df_grouped.sort_values(D, ascending=False))
+muertes_pais = df.groupby(country_col)[D].sum(numeric_only=True)
+z_scores = (muertes_pais - muertes_pais.mean())/muertes_pais.std()
+outliers = muertes_pais[z_scores > 3]
 
-# 2.2. Intervalos de confianza para CFR (binomial)
-from scipy.stats import binom
-def cfr_ci(deaths, confirmed, alpha=0.05):
-    if confirmed == 0:
-        return (0, 0)
-    ci_low, ci_upp = binom.interval(1-alpha, confirmed, deaths/confirmed)
-    return ci_low/confirmed, ci_upp/confirmed
+st.write("Outliers detectados (Z > 3):")
+st.dataframe(outliers)
 
-df_grouped["CFR_CI"] = df_grouped.apply(lambda row: cfr_ci(row[D], row[C]), axis=1)
-st.subheader("Intervalos de confianza de CFR")
-st.dataframe(df_grouped[[country_col, "CFR", "CFR_CI"]])
+# ———————————————————————————————————————————————
+# 2.5 Gráfico de control (3σ) de muertes diarias
+# ———————————————————————————————————————————————
+st.header("2.5 Gráfico de control (3σ) – Muertes diarias globales")
 
-# 2.3. Test de hipótesis de proporciones para comparar CFR entre dos países
-st.subheader("Comparación de CFR entre dos países")
-pais1 = st.selectbox("País 1", df_grouped[country_col].tolist())
-pais2 = st.selectbox("País 2", df_grouped[country_col].tolist(), index=1)
+# Sumamos muertes globales por fecha
+fechas = pd.date_range("2020-03-01","2020-05-01") # ejemplo
+diario = []
+for f in fechas:
+    try:
+        df_tmp, _, cols_tmp = load_daily_report(f.strftime("%Y-%m-%d"))
+        diario.append([f, df_tmp[cols_tmp["deaths"]].sum()])
+    except:
+        pass
+serie = pd.DataFrame(diario, columns=["Fecha","Muertes"])
 
-from statsmodels.stats.proportion import proportions_ztest
-d1 = int(df_grouped.loc[df_grouped[country_col]==pais1, D])
-n1 = int(df_grouped.loc[df_grouped[country_col]==pais1, C])
-d2 = int(df_grouped.loc[df_grouped[country_col]==pais2, D])
-n2 = int(df_grouped.loc[df_grouped[country_col]==pais2, C])
+media = serie["Muertes"].mean()
+sigma = serie["Muertes"].std()
+ucl = media + 3*sigma
+lcl = max(0, media - 3*sigma)
 
-stat, pval = proportions_ztest([d1, d2], [n1, n2])
-st.write(f"Z-test estadístico: {stat:.3f}, p-value: {pval:.3f}")
+st.line_chart(serie.set_index("Fecha"))
 
-# 2.4. Detección de outliers usando Z-score
-from scipy.stats import zscore
-df_grouped["zscore_deaths"] = zscore(df_grouped[D].fillna(0))
-outliers = df_grouped[df_grouped["zscore_deaths"].abs() > 3]
-st.subheader("Outliers en fallecidos (|Z|>3)")
-st.dataframe(outliers[[country_col, D, "zscore_deaths"]])
-
-# 2.5. Gráfico de control (3σ) de muertes diarias
-st.subheader("Gráfico de control (3σ) de muertes")
-# Si hay columna de fecha
-if "Last_Update" in df.columns:
-    df["Last_Update"] = pd.to_datetime(df["Last_Update"])
-    daily_deaths = df.groupby("Last_Update")[D].sum()
-else:
-    # fallback si no hay fecha
-    daily_deaths = df.groupby(country_col)[D].sum()
-
-mean_deaths = daily_deaths.mean()
-std_deaths = daily_deaths.std()
-import matplotlib.pyplot as plt
-
-fig, ax = plt.subplots(figsize=(12,5))
-ax.plot(daily_deaths.index, daily_deaths.values, marker="o", label="Muertes diarias")
-ax.axhline(mean_deaths, color="green", linestyle="--", label="Media")
-ax.axhline(mean_deaths + 3*std_deaths, color="red", linestyle="--", label="+3σ")
-ax.axhline(mean_deaths - 3*std_deaths, color="red", linestyle="--", label="-3σ")
-plt.xticks(rotation=45)
-ax.legend()
-st.pyplot(fig)
+st.write(f"Media: {media:.1f}, UCL (Límite superior 3σ): {ucl:.1f}, LCL: {lcl:.1f}")
