@@ -186,11 +186,14 @@ else:
     st.warning("Datos insuficientes para test.")
 
 # 2.4. Outliers (Z-score)
-st.subheader("2.4. Detección de outliers (Z-score en CFR)")
-agr["zscore_cfr"] = stats.zscore(agr["CFR"].fillna(0))
-outliers = agr[agr["zscore_cfr"].abs()>3]
-st.dataframe(outliers)
+st.header("2.4 Outliers en fallecidos (Z-score)")
 
+muertes_pais = df.groupby(country_col)[D].sum(numeric_only=True)
+z_scores = (muertes_pais - muertes_pais.mean())/muertes_pais.std()
+outliers = muertes_pais[z_scores > 3]
+
+st.write("Outliers detectados (Z > 3):")
+st.dataframe(outliers)
 # 2.5. Gráfico de control (3σ) de muertes diarias
 st.subheader("2.5. Gráfico de control de muertes diarias")
 country_daily = st.selectbox("Selecciona país para gráfico de control", agr.index, index=agr.index.tolist().index("Colombia") if "Colombia" in agr.index else 0)
@@ -218,40 +221,3 @@ st.pyplot(fig)
 # ———————————————————————————————————————————————
 
 
-
-# ———————————————————————————————————————————————
-# 2.4 Detección de outliers
-# ———————————————————————————————————————————————
-st.header("2.4 Outliers en fallecidos (Z-score)")
-
-muertes_pais = df.groupby(country_col)[D].sum(numeric_only=True)
-z_scores = (muertes_pais - muertes_pais.mean())/muertes_pais.std()
-outliers = muertes_pais[z_scores > 3]
-
-st.write("Outliers detectados (Z > 3):")
-st.dataframe(outliers)
-
-# ———————————————————————————————————————————————
-# 2.5 Gráfico de control (3σ) de muertes diarias
-# ———————————————————————————————————————————————
-st.header("2.5 Gráfico de control (3σ) – Muertes diarias globales")
-
-# Sumamos muertes globales por fecha
-fechas = pd.date_range("2020-03-01","2020-05-01") # ejemplo
-diario = []
-for f in fechas:
-    try:
-        df_tmp, _, cols_tmp = load_daily_report(f.strftime("%Y-%m-%d"))
-        diario.append([f, df_tmp[cols_tmp["deaths"]].sum()])
-    except:
-        pass
-serie = pd.DataFrame(diario, columns=["Fecha","Muertes"])
-
-media = serie["Muertes"].mean()
-sigma = serie["Muertes"].std()
-ucl = media + 3*sigma
-lcl = max(0, media - 3*sigma)
-
-st.line_chart(serie.set_index("Fecha"))
-
-st.write(f"Media: {media:.1f}, UCL (Límite superior 3σ): {ucl:.1f}, LCL: {lcl:.1f}")
