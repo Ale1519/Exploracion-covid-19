@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from io import StringIO
+from scipy import stats
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 st.set_page_config(page_title="COVID-19 Viz – Pregunta 2", layout="wide")
 
@@ -120,13 +123,6 @@ st.write("Resumen estadístico (simulación de boxplot):")
 st.dataframe(subset_plot.describe().T)
 
 st.header("Exploración COVID-19 – Versión Streamlit (Preg3)")
-
-import streamlit as st
-import pandas as pd
-import numpy as np
-from scipy import stats
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 st.set_page_config(page_title="Análisis COVID-19", layout="wide")
 st.title("Análisis COVID-19 - 18 de Abril 2022")
