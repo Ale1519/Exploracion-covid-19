@@ -217,32 +217,6 @@ st.pyplot(fig)
 # ———————————————————————————————————————————————
 # ———————————————————————————————————————————————
 
-st.header("2.3 Test de hipótesis de CFR entre dos países")
-
-# Definir columnas si no están ya
-D = "Deaths"
-C = "Confirmed"
-
-# Agrupación por país
-agg_country = df.groupby("Country")[[D, C]].sum()
-
-# Selección de países
-paises = st.multiselect("Selecciona dos países", agg_country.index.tolist(), default=["Peru", "Chile"])
-
-if len(paises) == 2:
-    deaths = [agg_country.loc[p, D] for p in paises]
-    confirmed = [agg_country.loc[p, C] for p in paises]
-
-    # Evitar división por cero
-    if 0 in confirmed:
-        st.error("Uno de los países seleccionados tiene 0 confirmados. No se puede calcular el test.")
-    else:
-        stat, pval = proportions_ztest(count=deaths, nobs=confirmed)
-        st.write(f"Estadístico Z: {stat:.3f}, p-valor: {pval:.4f}")
-        if pval < 0.05:
-            st.success("Se rechaza H0: Hay diferencia significativa en CFR.")
-        else:
-            st.info("No se rechaza H0: No hay diferencia significativa en CFR.")
 
 
 # ———————————————————————————————————————————————
