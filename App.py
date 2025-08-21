@@ -118,3 +118,7 @@ subset_plot = subset.head(25)
 # Streamlit no tiene boxplot nativo, así que mostramos estadísticas resumen en tabla
 st.write("Resumen estadístico (simulación de boxplot):")
 st.dataframe(subset_plot.describe().T)
+
+
+st.caption("Exploración COVID-19 – Versión Streamlit (Preg3)")
+
