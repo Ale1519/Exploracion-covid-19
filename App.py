@@ -127,7 +127,6 @@ st.dataframe(subset_plot.describe().T)
 st.header("Exploración COVID-19 – Versión Streamlit (Preg3)")
 
 st.set_page_config(page_title="Análisis COVID-19", layout="wide")
-st.title("Análisis COVID-19 - 18 de Abril 2022")
 
 st.title("2. Estadística descriptiva y avanzada")
 
