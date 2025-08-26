@@ -368,60 +368,49 @@ if mean_fc is not None:
     st.caption("Nota: Para ETS las bandas de confianza se aproximan usando la desviación estándar de los residuos.")
 
 
-# =======================
-# 4.1. Preprocesamiento
-# =======================
-# Agregar métricas de interés
-df_country = df.groupby("Country_Region").agg({
-    "Confirmed": "sum",
-    "Deaths": "sum",
-    "Recovered": "sum"
-}).reset_index()# o variable que represente crecimiento semanal
+# ==============================
+# PARTE 4: Exploración temporal
+# ==============================
 
-# Calcular tasas
-df_country["CFR"] = df_country["Deaths"] / df_country["Confirmed"]  # tasa de letalidad
-df_country["RecoveryRate"] = df_country["Recovered"] / df_country["Confirmed"]  # tasa de recuperación
-df_country["Growth7d"] = df_country["NewConfirmed"] / df_country["Confirmed"]  # crecimiento relativo en 7 días
+st.header("📈 Exploración temporal de casos por país")
 
-# Seleccionar variables para clustering
-X = df_country[["RecoveryRate", "CFR", "Growth7d"]].fillna(0)
+# Selección de país
+paises = df["Country_Region"].unique()
+pais = st.selectbox("Selecciona un país", sorted(paises))
 
-# =======================
-# 4.2. Clustering K-Means
-# =======================
-kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)  # puedes cambiar número de clusters
-df_country["Cluster"] = kmeans.fit_predict(X)
+# Filtrar datos por país
+df_country = df[df["Country_Region"] == pais].copy()
 
-# =======================
-# 4.3. Reducción con PCA
-# =======================
-pca = PCA(n_components=2)
-components = pca.fit_transform(X)
+# Asegurar tipo de fecha
+df_country["Last_Update"] = pd.to_datetime(df_country["Last_Update"])
 
-df_country["PC1"] = components[:,0]
-df_country["PC2"] = components[:,1]
+# Agrupar por fecha
+df_country = df_country.groupby("Last_Update").sum(numeric_only=True).reset_index()
 
-# =======================
-# 4.4. Gráfico
-# =======================
-plt.figure(figsize=(10,6))
-sns.scatterplot(
-    data=df_country, 
-    x="PC1", y="PC2", 
-    hue="Cluster", 
-    palette="Set2", 
-    s=100
-)
+# Crear columnas de casos nuevos (diferencia día a día)
+df_country["NewConfirmed"] = df_country["Confirmed"].diff().fillna(0)
+df_country["NewDeaths"] = df_country["Deaths"].diff().fillna(0)
 
-for i, row in df_country.iterrows():
-    plt.text(row["PC1"]+0.02, row["PC2"]+0.02, row["Country"], fontsize=8)
+# Calcular crecimiento relativo de casos en 7 días
+df_country["Growth7d"] = df_country["NewConfirmed"].rolling(window=7).mean() / df_country["Confirmed"].replace(0, 1)
 
-plt.title("Clusters de países (PCA 2D)")
-plt.show()
+# Gráfico de evolución de casos confirmados
+fig_cases = px.line(df_country, x="Last_Update", y="Confirmed", title=f"Evolución de casos confirmados en {pais}")
+st.plotly_chart(fig_cases, use_container_width=True)
 
-# =======================
-# 4.5. Interpretación
-# =======================
-cluster_profiles = df_country.groupby("Cluster")[["RecoveryRate", "CFR", "Growth7d"]].mean()
-print("=== Perfiles promedio por clúster ===")
-print(cluster_profiles)
+# Gráfico de nuevos casos diarios
+fig_new = px.bar(df_country, x="Last_Update", y="NewConfirmed", title=f"Nuevos casos diarios en {pais}")
+st.plotly_chart(fig_new, use_container_width=True)
+
+# Gráfico de nuevas muertes diarias
+fig_deaths = px.bar(df_country, x="Last_Update", y="NewDeaths", title=f"Nuevas muertes diarias en {pais}", color="NewDeaths")
+st.plotly_chart(fig_deaths, use_container_width=True)
+
+# Gráfico de crecimiento relativo (7 días)
+fig_growth = px.line(df_country, x="Last_Update", y="Growth7d", title=f"Crecimiento relativo (7d) en {pais}")
+st.plotly_chart(fig_growth, use_container_width=True)
+
+# Mostrar tabla resumida
+st.subheader("📊 Datos resumidos")
+st.dataframe(df_country[["Last_Update", "Confirmed", "Deaths", "NewConfirmed", "NewDeaths", "Growth7d"]].tail(15))
+
