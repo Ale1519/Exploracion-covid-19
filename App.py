@@ -368,42 +368,174 @@ if mean_fc is not None:
     st.caption("Nota: Para ETS las bandas de confianza se aproximan usando la desviación estándar de los residuos.")
 
 
-# ==============================
-# PARTE 4: Exploración temporal
-# ==============================
+# ===================================================
+# 4. Segmentación y reducción de dimensionalidad
+# ===================================================
+st.header("4. Segmentación y reducción de dimensionalidad")
 
-# Parte 4: Exploración por país
-st.header("📊 Exploración por país")
+# Import local para no tocar cabecera
+from sklearn.preprocessing import StandardScaler
 
-# Selección del país
-pais = st.selectbox("Selecciona un país", df["Country/Region"].unique())
+with st.expander("Instrucciones de esta sección", expanded=False):
+    st.markdown(
+        """
+- Variables usadas por país:
+  - **CFR** = Deaths / Confirmed
+  - **Tasas por 100k** (si subes poblaciones): Confirmed_per_100k, Deaths_per_100k
+  - **Crecimiento 7d** en confirmados: (acum_t - acum_{t-7}) / max(acum_{t-7}, 1)
+- Clustering con **K-means** (k configurable).
+- Reducción de dimensión con **PCA (2 componentes)** y *scatter* interactivo.
+- Tabla de **perfiles** promedio por clúster.
+        """
+    )
+#-------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------
 
-# Filtrar datos del país seleccionado
-df_country = df[df["Country/Region"] == pais].copy()
 
-# Verificar columnas necesarias antes de graficar
-if "Last_Update" in df_country.columns and "Confirmed" in df_country.columns:
-    # Aseguramos que las fechas estén en formato datetime
-    df_country["Last_Update"] = pd.to_datetime(df_country["Last_Update"], errors="coerce")
-    df_country = df_country.sort_values("Last_Update")
+# --- 4.0 Poblaciones opcionales para tasas por 100k ---
+pop_file = st.file_uploader(
+    "Opcional: subir CSV de poblaciones (Columnas: Country,Population) para tasas por 100k",
+    type=["csv"],
+    key="pop_csv_part4"
+)
+pop_map = None
+if pop_file is not None:
+    try:
+        _pop_df = pd.read_csv(pop_file)
+        if {"Country", "Population"}.issubset(_pop_df.columns):
+            pop_map = _pop_df.set_index("Country")["Population"].to_dict()
+            st.success("Poblaciones cargadas correctamente.")
+        else:
+            st.warning("El CSV debe tener columnas: Country, Population")
+    except Exception as e:
+        st.error(f"No se pudo leer el CSV de poblaciones: {e}")
 
-    # Graficar evolución de casos confirmados
-    fig_cases = px.line(df_country, x="Last_Update", y="Confirmed",
-                        title=f"Evolución de casos confirmados en {pais}")
-    st.plotly_chart(fig_cases, use_container_width=True)
+# --- 4.1 Construcción de features por país ---
+st.subheader("4.1 Construcción de variables para clustering")
 
-    # Graficar evolución de muertes
-    if "Deaths" in df_country.columns:
-        fig_deaths = px.line(df_country, x="Last_Update", y="Deaths",
-                             title=f"Evolución de muertes en {pais}")
-        st.plotly_chart(fig_deaths, use_container_width=True)
+# Agregados por país desde el daily report cargado
+feat = df.groupby(country_col)[[C, D]].sum(numeric_only=True).rename(
+    columns={C: "Confirmed", D: "Deaths"}
+)
 
-    # Calcular crecimiento relativo (si existen datos de nuevos casos)
-    if "NewConfirmed" in df_country.columns:
-        df_country["Growth7d"] = df_country["NewConfirmed"] / df_country["Confirmed"]
-        fig_growth = px.line(df_country, x="Last_Update", y="Growth7d",
-                             title=f"Crecimiento relativo de casos en {pais} (7 días)")
-        st.plotly_chart(fig_growth, use_container_width=True)
+# CFR
+feat["CFR"] = (feat["Deaths"] / feat["Confirmed"]).replace([np.inf, -np.inf], np.nan)
+
+# Tasas por 100k si hay poblaciones
+if pop_map:
+    feat["Confirmed_per_100k"] = [
+        (feat.loc[c, "Confirmed"] / pop_map.get(c, np.nan)) * 100000 for c in feat.index
+    ]
+    feat["Deaths_per_100k"] = [
+        (feat.loc[c, "Deaths"] / pop_map.get(c, np.nan)) * 100000 for c in feat.index
+    ]
 else:
-    st.warning("No hay datos suficientes para graficar este país.")
+    feat["Confirmed_per_100k"] = np.nan
+    feat["Deaths_per_100k"] = np.nan
+
+# Crecimiento 7d (usando series acumuladas de confirmados ya cargadas en 'acc_conf')
+# acc_conf: index=fecha (DatetimeIndex), columns=país
+growth_vals = []
+for ctry in feat.index:
+    if ctry in acc_conf.columns:
+        s = acc_conf[ctry].dropna()
+        if len(s) >= 8:
+            # asegurar frecuencia diaria y último valor
+            s = s.asfreq("D").fillna(method="ffill")
+            last = s.iloc[-1]
+            prev = s.iloc[-8]
+            g7 = (last - prev) / max(prev, 1)
+        else:
+            g7 = np.nan
+    else:
+        g7 = np.nan
+    growth_vals.append(g7)
+feat["Growth7d"] = growth_vals
+
+# Limpieza de infinitos y nulos
+feat = feat.replace([np.inf, -np.inf], np.nan)
+
+st.write("Vista previa de features (primeras filas):")
+st.dataframe(feat.head(15))
+
+# --- 4.2 K-means con selección de k y estandarización ---
+st.subheader("4.2 Clustering K-means")
+k = st.slider("Número de clústeres (k)", min_value=2, max_value=8, value=4, step=1)
+
+# Selección de variables para el clustering
+vars_disp = ["CFR", "Confirmed_per_100k", "Deaths_per_100k", "Growth7d"]
+vars_sel = st.multiselect(
+    "Variables a usar en el clustering",
+    vars_disp,
+    default=[v for v in vars_disp if v in feat.columns],
+)
+
+# Filtrado y estandarización
+feat_clust = feat.dropna(subset=vars_sel).copy()
+if feat_clust.empty or len(feat_clust) < k:
+    st.warning("No hay suficientes países con datos válidos para estas variables o k es muy grande.")
+else:
+    scaler = StandardScaler()
+    X = scaler.fit_transform(feat_clust[vars_sel])
+
+    # Entrenar KMeans
+    km = KMeans(n_clusters=k, n_init=20, random_state=42)
+    labels = km.fit_predict(X)
+    feat_clust["cluster"] = labels
+
+    st.write("Asignación de clústeres (primeras filas):")
+    st.dataframe(feat_clust.sort_values("cluster").head(20))
+
+    # --- 4.2.1 Perfiles promedio por clúster ---
+    st.markdown("**Perfiles promedio por clúster (medias estandarizadas y originales):**")
+    prof_orig = feat_clust.groupby("cluster")[vars_sel].mean().round(3)
+    prof_std = pd.DataFrame(km.cluster_centers_, columns=vars_sel).round(3)
+    st.write("Medias (escala original):")
+    st.dataframe(prof_orig)
+    st.write("Centroides (escala estandarizada):")
+    st.dataframe(prof_std)
+
+    # --- 4.3 PCA (2D) y scatter interactivo ---
+    st.subheader("4.3 PCA (2 componentes) y scatter por clúster")
+    pca = PCA(n_components=2, random_state=42)
+    X2 = pca.fit_transform(X)
+    feat_clust["PC1"] = X2[:, 0]
+    feat_clust["PC2"] = X2[:, 1]
+
+    exp_var = pca.explained_variance_ratio_
+    pc1_lbl = f"PC1 ({exp_var[0]*100:.1f}% var)"
+    pc2_lbl = f"PC2 ({exp_var[1]*100:.1f}% var)"
+
+    fig_scatter = px.scatter(
+        feat_clust.reset_index().rename(columns={country_col: "Country"}),
+        x="PC1", y="PC2",
+        color=feat_clust["cluster"].astype(str),
+        hover_name="Country",
+        hover_data=vars_sel,
+        labels={"color": "cluster", "PC1": pc1_lbl, "PC2": pc2_lbl},
+        title="PCA (2D) – países coloreados por clúster",
+        width=900, height=550
+    )
+    st.plotly_chart(fig_scatter, use_container_width=True)
+
+    # --- 4.3.1 Interpretación breve (auto) ---
+    st.markdown("**Interpretación rápida (auto):**")
+    interp = []
+    for c_id, row in prof_orig.iterrows():
+        tags = []
+        if "CFR" in row and row["CFR"] > prof_orig["CFR"].median():
+            tags.append("CFR alto")
+        if "Deaths_per_100k" in row and not np.isnan(row["Deaths_per_100k"]) and row["Deaths_per_100k"] > prof_orig["Deaths_per_100k"].median():
+            tags.append("mortalidad/100k alta")
+        if "Confirmed_per_100k" in row and not np.isnan(row["Confirmed_per_100k"]) and row["Confirmed_per_100k"] > prof_orig["Confirmed_per_100k"].median():
+            tags.append("incidencia/100k alta")
+        if "Growth7d" in row and row["Growth7d"] > prof_orig["Growth7d"].median():
+            tags.append("crecimiento 7d alto")
+        if not tags:
+            tags = ["perfil moderado/bajo en las variables seleccionadas"]
+        interp.append(f"- **Clúster {c_id}**: " + ", ".join(tags) + ".")
+    st.markdown("\n".join(interp))
 
