@@ -6,3 +6,5 @@ plotly
 seaborn
 scipy
 statsmodels
+scikit-learn
+xlsxwriter
