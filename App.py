@@ -372,7 +372,7 @@ if mean_fc is not None:
 # 4.1. Preprocesamiento
 # =======================
 # Agregar métricas de interés
-df_country = df.groupby("Country").agg({
+df_country = df.groupby("Country_Region").agg({
     "Confirmed": "sum",
     "Deaths": "sum",
     "Recovered": "sum",
