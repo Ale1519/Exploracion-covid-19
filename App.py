@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-
+import plotly.express as px
 
 # statsmodels para tests y modelos
 from statsmodels.stats.proportion import proportions_ztest
@@ -372,45 +372,38 @@ if mean_fc is not None:
 # PARTE 4: Exploración temporal
 # ==============================
 
-st.header("📈 Exploración temporal de casos por país")
+# Parte 4: Exploración por país
+st.header("📊 Exploración por país")
 
-# Selección de país
-paises = df["Country_Region"].unique()
-pais = st.selectbox("Selecciona un país", sorted(paises))
+# Selección del país
+pais = st.selectbox("Selecciona un país", df["Country/Region"].unique())
 
-# Filtrar datos por país
-df_country = df[df["Country_Region"] == pais].copy()
+# Filtrar datos del país seleccionado
+df_country = df[df["Country/Region"] == pais].copy()
 
-# Asegurar tipo de fecha
-df_country["Last_Update"] = pd.to_datetime(df_country["Last_Update"])
+# Verificar columnas necesarias antes de graficar
+if "Last_Update" in df_country.columns and "Confirmed" in df_country.columns:
+    # Aseguramos que las fechas estén en formato datetime
+    df_country["Last_Update"] = pd.to_datetime(df_country["Last_Update"], errors="coerce")
+    df_country = df_country.sort_values("Last_Update")
 
-# Agrupar por fecha
-df_country = df_country.groupby("Last_Update").sum(numeric_only=True).reset_index()
+    # Graficar evolución de casos confirmados
+    fig_cases = px.line(df_country, x="Last_Update", y="Confirmed",
+                        title=f"Evolución de casos confirmados en {pais}")
+    st.plotly_chart(fig_cases, use_container_width=True)
 
-# Crear columnas de casos nuevos (diferencia día a día)
-df_country["NewConfirmed"] = df_country["Confirmed"].diff().fillna(0)
-df_country["NewDeaths"] = df_country["Deaths"].diff().fillna(0)
+    # Graficar evolución de muertes
+    if "Deaths" in df_country.columns:
+        fig_deaths = px.line(df_country, x="Last_Update", y="Deaths",
+                             title=f"Evolución de muertes en {pais}")
+        st.plotly_chart(fig_deaths, use_container_width=True)
 
-# Calcular crecimiento relativo de casos en 7 días
-df_country["Growth7d"] = df_country["NewConfirmed"].rolling(window=7).mean() / df_country["Confirmed"].replace(0, 1)
-
-# Gráfico de evolución de casos confirmados
-fig_cases = px.line(df_country, x="Last_Update", y="Confirmed", title=f"Evolución de casos confirmados en {pais}")
-st.plotly_chart(fig_cases, use_container_width=True)
-
-# Gráfico de nuevos casos diarios
-fig_new = px.bar(df_country, x="Last_Update", y="NewConfirmed", title=f"Nuevos casos diarios en {pais}")
-st.plotly_chart(fig_new, use_container_width=True)
-
-# Gráfico de nuevas muertes diarias
-fig_deaths = px.bar(df_country, x="Last_Update", y="NewDeaths", title=f"Nuevas muertes diarias en {pais}", color="NewDeaths")
-st.plotly_chart(fig_deaths, use_container_width=True)
-
-# Gráfico de crecimiento relativo (7 días)
-fig_growth = px.line(df_country, x="Last_Update", y="Growth7d", title=f"Crecimiento relativo (7d) en {pais}")
-st.plotly_chart(fig_growth, use_container_width=True)
-
-# Mostrar tabla resumida
-st.subheader("📊 Datos resumidos")
-st.dataframe(df_country[["Last_Update", "Confirmed", "Deaths", "NewConfirmed", "NewDeaths", "Growth7d"]].tail(15))
+    # Calcular crecimiento relativo (si existen datos de nuevos casos)
+    if "NewConfirmed" in df_country.columns:
+        df_country["Growth7d"] = df_country["NewConfirmed"] / df_country["Confirmed"]
+        fig_growth = px.line(df_country, x="Last_Update", y="Growth7d",
+                             title=f"Crecimiento relativo de casos en {pais} (7 días)")
+        st.plotly_chart(fig_growth, use_container_width=True)
+else:
+    st.warning("No hay datos suficientes para graficar este país.")
 
