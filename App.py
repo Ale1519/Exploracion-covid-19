@@ -6,6 +6,9 @@ from io import StringIO
 from scipy import stats
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+
 
 # statsmodels para tests y modelos
 from statsmodels.stats.proportion import proportions_ztest
@@ -363,3 +366,63 @@ if mean_fc is not None:
     st.pyplot(fig_f)
 
     st.caption("Nota: Para ETS las bandas de confianza se aproximan usando la desviación estándar de los residuos.")
+
+
+# =======================
+# 4.1. Preprocesamiento
+# =======================
+# Agregar métricas de interés
+df_country = df.groupby("Country").agg({
+    "Confirmed": "sum",
+    "Deaths": "sum",
+    "Recovered": "sum",
+    "NewConfirmed": "sum"  # o variable que represente crecimiento semanal
+}).reset_index()
+
+# Calcular tasas
+df_country["CFR"] = df_country["Deaths"] / df_country["Confirmed"]  # tasa de letalidad
+df_country["RecoveryRate"] = df_country["Recovered"] / df_country["Confirmed"]  # tasa de recuperación
+df_country["Growth7d"] = df_country["NewConfirmed"] / df_country["Confirmed"]  # crecimiento relativo en 7 días
+
+# Seleccionar variables para clustering
+X = df_country[["RecoveryRate", "CFR", "Growth7d"]].fillna(0)
+
+# =======================
+# 4.2. Clustering K-Means
+# =======================
+kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)  # puedes cambiar número de clusters
+df_country["Cluster"] = kmeans.fit_predict(X)
+
+# =======================
+# 4.3. Reducción con PCA
+# =======================
+pca = PCA(n_components=2)
+components = pca.fit_transform(X)
+
+df_country["PC1"] = components[:,0]
+df_country["PC2"] = components[:,1]
+
+# =======================
+# 4.4. Gráfico
+# =======================
+plt.figure(figsize=(10,6))
+sns.scatterplot(
+    data=df_country, 
+    x="PC1", y="PC2", 
+    hue="Cluster", 
+    palette="Set2", 
+    s=100
+)
+
+for i, row in df_country.iterrows():
+    plt.text(row["PC1"]+0.02, row["PC2"]+0.02, row["Country"], fontsize=8)
+
+plt.title("Clusters de países (PCA 2D)")
+plt.show()
+
+# =======================
+# 4.5. Interpretación
+# =======================
+cluster_profiles = df_country.groupby("Cluster")[["RecoveryRate", "CFR", "Growth7d"]].mean()
+print("=== Perfiles promedio por clúster ===")
+print(cluster_profiles)
