@@ -367,34 +367,6 @@ if mean_fc is not None:
 
     st.caption("Nota: Para ETS las bandas de confianza se aproximan usando la desviación estándar de los residuos.")
 
-
-# ===================================================
-# 4. Segmentación y reducción de dimensionalidad
-# ===================================================
-st.header("4. Segmentación y reducción de dimensionalidad")
-
-# Import local para no tocar cabecera
-from sklearn.preprocessing import StandardScaler
-
-with st.expander("Instrucciones de esta sección", expanded=False):
-    st.markdown(
-        """
-- Variables usadas por país:
-  - **CFR** = Deaths / Confirmed
-  - **Tasas por 100k** (si subes poblaciones): Confirmed_per_100k, Deaths_per_100k
-  - **Crecimiento 7d** en confirmados: (acum_t - acum_{t-7}) / max(acum_{t-7}, 1)
-- Clustering con **K-means** (k configurable).
-- Reducción de dimensión con **PCA (2 componentes)** y *scatter* interactivo.
-- Tabla de **perfiles** promedio por clúster.
-        """
-    )
-#-------------------------------------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------------------------------------
-#-------------------------------------------------------------------------------------------------------------
-
-
 # ----------------------------
 # PARTE 4 (Segmentación sin K-Means)
 # ----------------------------
