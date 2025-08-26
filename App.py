@@ -375,9 +375,8 @@ if mean_fc is not None:
 df_country = df.groupby("Country_Region").agg({
     "Confirmed": "sum",
     "Deaths": "sum",
-    "Recovered": "sum",
-    "NewConfirmed": "sum"  # o variable que represente crecimiento semanal
-}).reset_index()
+    "Recovered": "sum"
+}).reset_index()# o variable que represente crecimiento semanal
 
 # Calcular tasas
 df_country["CFR"] = df_country["Deaths"] / df_country["Confirmed"]  # tasa de letalidad
